@@ -1,10 +1,10 @@
-#!/bin/sh -e
+#!/bin/sh
 if [ -z "${sshd_config_readonly}" ]; then
 	sshd_config_readonly="false";
 fi;
 
 if [ -z "${root_password}" ]; then # random root password if not defined
-	root_password=$(apg -n 1 -m 23 -x 63 -M LNC -a 1);
+	root_password="$(apg -n 1 -m 23 -x 63 -M LNC -a 1)";
 	printf "\n\n---------------------------------------------\n";
 	printf "root password is: ${root_password}\n";
 	printf "---------------------------------------------\n\n";
@@ -20,6 +20,7 @@ printf "${sshd_banner}" > /etc/banner; # fill banner
 if [ "${sshd_config_readonly}" == "false" ]; then
 	sed -iE 's|^.*PermitRootLogin.*$||g; s|^.*Banner.*$||g;' /etc/ssh/sshd_config;
 	printf "PermitRootLogin yes\nBanner /etc/banner\n" | tee -a /etc/ssh/sshd_config;
+	ssh-keygen -A;
 fi;
 
 printf "root:${root_password}\n" | chpasswd;
@@ -29,6 +30,5 @@ chown -R root:root ~root/.ssh;
 find ~root/.ssh -type d -exec chmod 700 {} +;
 find ~root/.ssh -type f -exec chmod 600 {} +;
 
-ssh-keygen -A;
 /usr/sbin/sshd -De ${@};
 exit ${?}; # exit however sshd exited
