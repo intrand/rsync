@@ -24,6 +24,11 @@ fi;
 
 printf "root:${root_password}\n" | chpasswd;
 
+mkdir -p ~root/.ssh;
+chown -R root:root ~root/.ssh;
+find ~root/.ssh -type d -exec chmod 700 {} +;
+find ~root/.ssh -type f -exec chmod 600 {} +;
+
 ssh-keygen -A;
 /usr/sbin/sshd -De ${@};
 exit ${?}; # exit however sshd exited
