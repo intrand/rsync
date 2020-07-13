@@ -1,4 +1,7 @@
 #!/bin/sh -e
+if [ -z "${sshd_config_readonly}" ]; then
+	sshd_config_readonly="false";
+fi;
 
 if [ -z "${root_password}" ]; then # random root password if not defined
 	root_password=$(apg -n 1 -m 23 -x 63 -M LNC -a 1);
@@ -14,8 +17,10 @@ fi;
 printf "${sshd_motd}" > /etc/motd; # fill motd
 printf "${sshd_banner}" > /etc/banner; # fill banner
 
-sed -iE 's|^.*PermitRootLogin.*$||g; s|^.*Banner.*$||g;' /etc/ssh/sshd_config;
-printf "PermitRootLogin yes\nBanner /etc/banner\n" | tee -a /etc/ssh/sshd_config;
+if [ "${sshd_config_readonly}" == "false" ]; then
+	sed -iE 's|^.*PermitRootLogin.*$||g; s|^.*Banner.*$||g;' /etc/ssh/sshd_config;
+	printf "PermitRootLogin yes\nBanner /etc/banner\n" | tee -a /etc/ssh/sshd_config;
+fi;
 
 printf "root:${root_password}\n" | chpasswd;
 
