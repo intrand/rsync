@@ -6,41 +6,98 @@ on:
     tags:
       - "*" # triggers on all new tags
 
-permissions:
-  contents: write
-  packages: write
+env:
+  registry: ghcr.io
+  image_name: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
 jobs:
   buildx:
+    needs: get_info
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
 
     env:
       DOCKER_CLI_EXPERIMENTAL: enabled
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
+      - name: cosign-installer
+        uses: sigstore/cosign-installer@v2
+
       - name: set up qemu
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
 
       - name: set up docker buildx
         id: buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
 
       - name: docker login
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
-          registry: ghcr.io
+          registry: ${{ env.registry }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: docker meta
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ env.image_name }}
+          # tags useful for cosign; must also be used in docker_build step to be used in cosign
+          # tags: |
+          #   type=sha,format=long
+          #   type=ref,event=branch
+          #   type=ref,event=tag
+          #   type=semver,pattern={{ version }}
+
       - name: build and push
         id: docker_build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v3
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          tags: ${{ env.image_name }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: sign
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+        # to use ${{ steps.meta.outputs.tags }} here, it must also exist in registry from the docker_build step
+        run: cosign sign --key env://COSIGN_PRIVATE_KEY ${{ env.image_name }} # use static key
+
+      - name: create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          body: |
+            # OCI image:
+
+            ```
+            ${{ env.image_name }}
+            ```
+
+            verify OCI image signature using `cosign`:
+
+            ```
+            cat <<EOF > cosign.pub
+            ${{ secrets.COSIGN_PUBLIC_KEY }}
+            EOF
+
+            cosign verify --key cosign.pub ${{ env.image_name }};
+
+            rm -f cosign.pub
+            ```
+          draft: false
+          prerelease: false
